@@ -73,6 +73,8 @@ button:disabled{opacity:.4}
 .sec{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:4px}
 #mapc{width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#050912}
 @media (prefers-reduced-motion:reduce){.t{animation-duration:8s}}
+.rc.lock{opacity:.5;border-style:dashed}.rc.lock em{color:var(--amber)}.ci.done b{color:#4fd1b5}
+.ib button{padding-left:9px;padding-right:9px}#bHelp{min-width:30px}.hp{display:grid;grid-auto-flow:column;grid-gap:4px;gap:4px;margin:10px 0}.hp i{height:5px;background:var(--line);border-radius:3px}.hp i.on{background:var(--amber)}.gd p{margin:6px 0}.gd b{color:var(--amber)}
 </style>
 
 <div id="app">
@@ -87,7 +89,7 @@ button:disabled{opacity:.4}
   </div>
   <div id="hr">
     <canvas id="mm" width="184" height="184" title="Open galaxy map"></canvas>
-    <div class="ib"><button id="bPause">Pause</button><button id="bSpd">1x</button><button id="bCodex">Codex</button></div>
+    <div class="ib"><button id="bPause">Pause</button><button id="bSpd">1x</button><button id="bCodex">Codex</button><button id="bHelp">?</button></div>
   </div>
 </div>
 <div id="alert"></div>
@@ -141,7 +143,7 @@ const RACES={
 };
 const RNAME={VoidBorn:"Void-Born",Fallen:"Fallen Empire",Celestial:"Celestial Dominion",Hive:"Hive-Mind",Immortal:"Immortal Dao"};
 const rname=r=>RNAME[r]||r;
-function unlocked(){try{if(localStorage.getItem("dfa_unlock")==="1")return true}catch(e){}return UI.secret===1}
+function unlocked(){return !!(P&&P.meta.secret)||UI.secret===1}
 const MYTH=["Dragon","Titan","Phoenix","Kraken","Elf","Giant","Minotaur","Naga","Griffin","Djinn","Dwarf","Valkyrie","Yeti","Centaur","Golem","Sphinx"];
 const LEGENDS=[
  {id:"wardens",n:"Eternal Wardens",at:30,c:"#6fffd0",pk:"ice",aggr:35,pw:1.8,d:"Armoured crusader-knights of an ancient order. An alliance makes your defense 25% stronger."},
@@ -513,7 +515,7 @@ function newGame(name,race){
 /* ---------- progress ---------- */
 function checkLevel(){
   while(G.prog>=need(G.lvl10)&&G.lvl10<99&&!G.dead){G.prog-=need(G.lvl10);G.lvl10++;onLevel()}
-  if(G.lvl10>=99&&!G.won){G.won=true;G.lvl10=99;save(true);showEnd()}
+  if(G.lvl10>=99&&!G.won){G.won=true;G.lvl10=99;onWin();save(true);showEnd()}
 }
 function tribulation(){
   const t=tier(),pw=40+30*t,st=effDef()+G.pop*.3+fleetPower()*.5;
@@ -522,7 +524,7 @@ function tribulation(){
   else{G.def*=.6;G.pop*=.75;G.prog*=.8;loseFleet(.15);say("HEAVENLY TRIBULATION wounds you. Defense, people and research suffer.","bad")}
 }
 function onLevel(){
-  say("Level "+fmtL(G.lvl10)+" reached","good");boom(HX,HY,"#f2b84b",18);
+  say("Level "+fmtL(G.lvl10)+" reached","good");metaTick();save();boom(HX,HY,"#f2b84b",18);
   if(G.lvl10%10===0){say(isIm()?"BREAKTHROUGH: you enter the "+tierName().split(" · ")[0]+" realm.":"A new era: "+TIERS[tier()]+". New civilizations appear.","epic");for(let i=0;i<4;i++)spawnCiv();if(isIm())tribulation()}
   if(G.lvl10===8)ensureBandits();
   for(const l of LEGENDS)if(l.at<=G.lvl10&&!G.civs.some(c=>c.leg===l.id)&&!(G.legDone&&G.legDone[l.id])){spawnCiv(l);say("A legendary civilization stirs somewhere in the universe.","epic")}
@@ -557,7 +559,7 @@ function buildShip(id){
   const s=SHIPS.find(x=>x.id===id);if(!G.yard){say("Build a shipyard first.");return false}
   if(G.lvl10<s.at){say(s.n+" needs level "+fmtL(s.at));return false}
   if(supplyUsed()+s.sup>supplyCap()){say("Fleet supply full. Expand your territory or level up.","bad");return false}
-  if(!spend(costs.ship(s)))return false;G.queue.push(id);expo(.5);return true;
+  if(!spend(costs.ship(s)))return false;G.queue.push(id);cntUp("built");expo(.5);return true;
 }
 const near=c=>Math.hypot(c.x-G.ship.x,c.y-G.ship.y)<c.r+70;
 function cTrade(c){
@@ -579,7 +581,7 @@ function cAlly(c){
   if(c.aggr>60){say(c.name+" is too hostile. Appease them first.","bad");return}
   if(!ready()||!spend(costs.ally()))return;
   expo(2);
-  if(Math.random()<.85-c.aggr/200){c.ally=true;say("ALLIANCE with "+c.name+"!","good")}else say(c.name+" declines your offer.","bad");
+  if(Math.random()<.85-c.aggr/200){c.ally=true;flag("ally");if(c.leg)flag("ally:"+c.leg);say("ALLIANCE with "+c.name+"!","good")}else say(c.name+" declines your offer.","bad");
 }
 function cAppease(c){
   if(!ready()||!spend(costs.app()))return;
@@ -603,7 +605,7 @@ function cAttack(c,mode){
   }else{G.def*=.75;say("Your raid on "+c.name+" fails. Defense -25%.","bad")}
 }
 function conquer(c,mode){
-  const pl=1+bonus("plunder"),e=Math.round((25+4*c.lvl10)*(c.leg==="greenhide"?2:1)*pl),p=Math.round((20+3*c.lvl10)*pl);c.alive=false;
+  const pl=1+bonus("plunder"),e=Math.round((25+4*c.lvl10)*(c.leg==="greenhide"?2:1)*pl),p=Math.round((20+3*c.lvl10)*pl);c.alive=false;metaConquer(c);
   if(G.legDone===undefined)G.legDone={};if(c.leg)G.legDone[c.leg]=1;
   if(mode==="col"){
     G.cols.push({id:c.id,x:c.x,y:c.y,name:c.name,pk:c.pk,seed:c.seed,yl:c.lvl10,col:c.col,r:c.r,ring:c.ring});
@@ -754,7 +756,7 @@ function banditRaid(b,k){
   else{b.hp*=.5;say("Colony "+k.name+" drives off the raiders.","good")}
 }
 function killBandit(b){
-  G.stats.bandits=(G.stats.bandits||0)+1;boom(b.x,b.y,"#ff7a22",26);const L=G.lvl10;
+  G.stats.bandits=(G.stats.bandits||0)+1;cntUp("bandits");boom(b.x,b.y,"#ff7a22",26);const L=G.lvl10;
   for(let i=0;i<3;i++)spawnOrb(b.x+rnd(-40,40),b.y+rnd(-40,40),12+3*L);
   if(b.loot>0)spawnOrb(b.x,b.y,b.loot*1.2);
   let extra="";
@@ -803,7 +805,7 @@ function endCycle(){
   G.expo=Math.max(floorSig(),G.expo-(2+(G.cloak>0?3:0)));
   checkLevel();if(G.won)return;
   for(const c of G.civs)if(c.alive&&!c.dormant&&c.lvl10<95&&Math.random()<.16)c.lvl10++;
-  aiDiplomacy();
+  aiDiplomacy();metaTick();
   if(G.cycle%3===0)ensureBandits();banditCycle();
   if(isIm())G.prog+=1+.35*L;
   for(const b of G.bodies)if(b.kind==="wh"){for(let i=0;i<2;i++){const a=rnd(0,TAU),d=rnd(70,230);spawnOrb(b.x+Math.cos(a)*d,b.y+Math.sin(a)*d,(6+1.5*L)*1.6)}}
@@ -892,7 +894,7 @@ function step(dt){
   for(const o of G.fx){o.t+=dt;if(o.p){o.x+=o.vx*dt;o.y+=o.vy*dt}else o.y-=26*dt}
   G.fx=G.fx.filter(o=>o.t<o.life);
 }
-function killCal(k){if(k.dead)return;k.dead=true;G.stats.cals++;boom(k.x,k.y,k.c,36);say("CALAMITY DESTROYED: "+k.n,"good");for(let i=0;i<3;i++)spawnOrb(k.x+rnd(-50,50),k.y+rnd(-50,50),15+3*G.lvl10);expo(3)}
+function killCal(k){if(k.dead)return;k.dead=true;cntUp("cals");flag("kill:"+k.type);G.stats.cals++;boom(k.x,k.y,k.c,36);say("CALAMITY DESTROYED: "+k.n,"good");for(let i=0;i<3;i++)spawnOrb(k.x+rnd(-50,50),k.y+rnd(-50,50),15+3*G.lvl10);expo(3)}
 /* ---------- fleet command ---------- */
 function oddsOf(c,frac){const sh={};for(const x of SHIPS)sh[x.id]=frac>=1?(G.fleet[x.id]||0):Math.floor((G.fleet[x.id]||0)*frac+.5);return tfPower(sh)*(1+bonus("fhp"))*(1+.15*allies().length)/(civPower(c)*1.1*doc(c).hp)}
 function dispatch(c,frac){
@@ -925,7 +927,7 @@ function tfStep(dt){
         const dm=tf.mx*hf*.16*rnd(.8,1.2)*(1+.15*allies().length)*(tf.first?1+bonus("ambush"):1);
         const de=civPower(c)*.14*rnd(.8,1.3)*d0.dmg*(tf.first&&d0.amb?1+d0.amb:1);
         tf.first=false;tf.ep-=dm;tf.hp-=de;c.fl=Math.max(.05,Math.min(1,tf.ep/tf.ep0));
-        if(tf.ep<=0){tfLoss(tf,1-Math.max(0,tf.hp)/tf.hpmax);G.stats.won++;say("VICTORY at "+c.name+"!","epic");tf.state="back";c.fl=1;
+        if(tf.ep<=0){tfLoss(tf,1-Math.max(0,tf.hp)/tf.hpmax);G.stats.won++;cntUp("battles");say("VICTORY at "+c.name+"!","epic");tf.state="back";c.fl=1;
           if(UI.auto)conquer(c,UI.auto);else showChoice(c);continue}
         if(tf.hp<=0){tfLoss(tf,1);say("Your task force was destroyed at "+c.name+".","bad");tf.done=true;continue}
       }
@@ -975,7 +977,7 @@ function updateShip(dt){
       if(d<b.r+8&&!R().bh){const p=freePos(900,3200,200);s.x=p.x;s.y=p.y;s.vx=s.vy=0;G.energy*=.85;UI.cam.x=s.x;UI.cam.y=s.y;say("Dragged past the horizon and spat out elsewhere. Energy -15%.","bad");checkLevel()}
       else if(d<b.r+8){s.vx-=dx/d*400;s.vy-=dy/d*400}
     }else if(b.kind==="wh"){if(d<260){s.vx-=dx/d*180*dt;s.vy-=dy/d*180*dt}}
-    else if(b.kind==="worm"){if(d<b.r+16&&G.whcd<=0){const q=G.bodies.find(x=>x.id===b.pid);if(q){s.x=q.x+Math.cos(s.a)*(q.r+70);s.y=q.y+Math.sin(s.a)*(q.r+70);s.vx=s.vy=0;G.whcd=3;UI.cam.x=s.x;UI.cam.y=s.y;say("Wormhole jump!","good")}}}
+    else if(b.kind==="worm"){if(d<b.r+16&&G.whcd<=0){const q=G.bodies.find(x=>x.id===b.pid);if(q){s.x=q.x+Math.cos(s.a)*(q.r+70);s.y=q.y+Math.sin(s.a)*(q.r+70);s.vx=s.vy=0;G.whcd=3;UI.cam.x=s.x;UI.cam.y=s.y;flag("wormhole");say("Wormhole jump!","good")}}}
     else if(b.kind==="warp"){if(d<b.r){G.expo=clamp(G.expo+.35*dt*R().ex,0,100);if(Math.random()<dt*.18)warpEvent()}}
     else if(b.kind==="pulsar"){if(d<420){G.prog+=need(G.lvl10)*.004*dt;G.expo=clamp(G.expo+.25*dt*R().ex,0,100)}}
     else if(b.kind==="neb"){if(d<b.r)G.expo=Math.max(floorSig(),G.expo-.4*dt)}
@@ -985,7 +987,7 @@ function updateShip(dt){
   s.x=clamp(s.x+s.vx*dt,40,WORLD-40);s.y=clamp(s.y+s.vy*dt,40,WORLD-40);
   if(Math.hypot(s.vx,s.vy)>20)s.a=Math.atan2(s.vy,s.vx);
   for(let i=G.orbs.length-1;i>=0;i--){const o=G.orbs[i];if(Math.hypot(o.x-s.x,o.y-s.y)<40){const v=Math.round(o.v*R().en*R().orb*(1+bonus("orb")));G.energy+=v;floatTxt(o.x,o.y,"+"+v);G.orbs.splice(i,1)}}
-  for(const c of G.civs)if(c.alive&&!c.met&&Math.hypot(c.x-s.x,c.y-s.y)<rad*.7){c.met=true;
+  for(const c of G.civs)if(c.alive&&!c.met&&Math.hypot(c.x-s.x,c.y-s.y)<rad*.7){c.met=true;cntUp("met");
     say(c.leg?"LEGENDARY CIVILIZATION FOUND: "+c.name+" (Lv "+fmtL(c.lvl10)+")":"Discovered "+c.name+" (Lv "+fmtL(c.lvl10)+")",c.leg?"epic":"");}
 }
 function lootRuin(b){
@@ -996,8 +998,185 @@ function lootRuin(b){
   else{if(L>=20){spawnCal(CALS.filter(c=>c.min<=L)[0]);say("The ruins' guardians awaken!","bad")}else{G.energy*=.8;say("A trap! Energy -20%.","bad")}}
 }
 
+
+/* ---------- profile, save slots, unlocks ---------- */
+const MEM={};
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return MEM[k]===undefined?null:MEM[k]}},set(k,v){try{localStorage.setItem(k,v)}catch(e){MEM[k]=v}},del(k){try{localStorage.removeItem(k)}catch(e){}delete MEM[k]}};
+let P=null;
+const esc=t=>String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const hpin=t=>{let h=5381;for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0;return t?String(h):""};
+const newMeta=()=>({flags:{},cnt:{met:0,battles:0,cals:0,bandits:0,built:0},unl:{},ach:{},winRaces:{},wins:0,best:0,secret:0,games:0});
+const DM=newMeta();
+const MT=()=>P?P.meta:DM;
+function fixMeta(m){const n=newMeta();m=m||{};for(const k in n)if(m[k]===undefined)m[k]=n[k];for(const k in n.cnt)if(m.cnt[k]===undefined)m.cnt[k]=0;return m}
+function saveMeta(){if(!P)return;LS.set("dfa_p_"+P.name,JSON.stringify(P));LS.set("dfa_cur",P.name)}
+function loadProfile(n){try{const s=LS.get("dfa_p_"+n);if(!s)return null;const p=JSON.parse(s);p.meta=fixMeta(p.meta);return p}catch(e){return null}}
+function profileNames(){const a=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.indexOf("dfa_p_")===0)a.push(k.slice(6))}}catch(e){}for(const k in MEM)if(k.indexOf("dfa_p_")===0&&a.indexOf(k.slice(6))<0)a.push(k.slice(6));return a}
+const slotKey=i=>"dfa_s_"+P.name+"_"+i;
+function readSlot(i){try{const s=LS.get(slotKey(i));return s?JSON.parse(s):null}catch(e){return null}}
+function writeSlot(){
+  if(!P||!G||G.slot===undefined||G.slot===null||G.dead)return;
+  const sum={name:G.name,race:G.race,lvl10:G.lvl10,cycle:G.cycle,t:Date.now(),state:G.won?"won":"play"};
+  LS.set(slotKey(G.slot),JSON.stringify({sum,g:G.won?null:G}));
+}
+function save(clear){
+  if(!G||!P||G.slot===undefined||G.slot===null)return;
+  if(clear){if(G.won)writeSlot();return}
+  if(G.dead)return;writeSlot();saveMeta();
+}
+function loadSlot(i){
+  const d=readSlot(i);if(!d||!d.g)return false;const g=d.g;
+  if(!(g.race&&RACES[g.race]&&g.bodies&&g.tf&&g.techs&&g.wars&&g.bandits)){return false}
+  G=g;G.slot=i;setRace();closeOv();UI.paused=false;say("Welcome back, "+G.name+".");return true;
+}
+function startGame(name,race,slot){
+  newGame(name,race);G.slot=slot;
+  const m=MT(),n=Object.keys(m.ach).length;G.energy+=10*n;m.games++;
+  writeSlot();saveMeta();
+  if(P&&!m.tut)setTimeout(()=>showHelp(0),50);
+}
+const REQ={
+ Elf:["Reach level 3.0 in any game",m=>m.best>=30],
+ Dwarf:["Build 20 ships in total",m=>m.cnt.built>=20],
+ Titan:["Own 3 colonies at once",m=>m.flags.col3],
+ Dragon:["Defeat a Dragon civilization",m=>m.flags["defeat:Dragon"]],
+ Phoenix:["Defeat a Phoenix civilization",m=>m.flags["defeat:Phoenix"]],
+ Kraken:["Defeat a Kraken civilization",m=>m.flags["defeat:Kraken"]],
+ Djinn:["Defeat a Djinn civilization",m=>m.flags["defeat:Djinn"]],
+ Minotaur:["Defeat a Minotaur civilization",m=>m.flags["defeat:Minotaur"]],
+ Valkyrie:["Defeat a Valkyrie civilization",m=>m.flags["defeat:Valkyrie"]],
+ Machine:["Destroy the Exterminator Machines calamity",m=>m.flags["kill:machine"]],
+ Hive:["Destroy the Devouring Swarm calamity",m=>m.flags["kill:swarm"]],
+ Crystalline:["Ally with the Crystal Concord",m=>m.flags["ally:concord"]],
+ VoidBorn:["Travel through a wormhole",m=>m.flags.wormhole],
+ Fallen:["Defeat the Iron Throne Empire",m=>m.flags["defeat:iron"]],
+ Zeroers:["Win a game (reach level 9.9)",m=>m.wins>=1],
+ Celestial:["Build 6 wonders in one game",m=>m.flags.wond6]
+};
+const ACH=[
+ ["hello","Hello, Dark Forest","Discover 10 civilizations",m=>m.cnt.met>=10],
+ ["admiral","Admiral","Win 10 fleet battles",m=>m.cnt.battles>=10],
+ ["slayer","Calamity Slayer","Destroy 5 calamities",m=>m.cnt.cals>=5],
+ ["bandit","Bandit Bane","Destroy 10 bandit packs",m=>m.cnt.bandits>=10],
+ ["empire","Empire Builder","Own 5 colonies at once",m=>m.flags.col5],
+ ["wonder","Wonder Architect","Build 6 wonders in one game",m=>m.flags.wond6],
+ ["peace","Peacemaker","Ally with a civilization",m=>m.flags.ally],
+ ["legend","Legend Hunter","Defeat a legendary civilization",m=>m.flags.leg],
+ ["ascend","Ascended","Win a game",m=>m.wins>=1],
+ ["many","Master of Many","Win with 3 different races",m=>Object.keys(m.winRaces).length>=3]
+];
+const raceOpen=r=>r==="Human"||(r==="Immortal"?!!MT().secret||UI.secret===1:!!MT().unl[r]);
+function checkMeta(){
+  if(!P)return;const m=P.meta;let ch=0;
+  for(const r in REQ)if(!m.unl[r]&&REQ[r][1](m)){m.unl[r]=1;ch=1;if(G)say("NEW RACE UNLOCKED: "+rname(r),"epic")}
+  for(const a of ACH)if(!m.ach[a[0]]&&a[3](m)){m.ach[a[0]]=1;ch=1;if(G)say("ACHIEVEMENT: "+a[1]+" (+10 starting energy)","epic")}
+  if(ch)saveMeta();
+}
+function flag(k){if(!P)return;const m=P.meta;if(m.flags[k])return;m.flags[k]=1;saveMeta();checkMeta()}
+function cntUp(k){if(!P)return;P.meta.cnt[k]=(P.meta.cnt[k]||0)+1;checkMeta()}
+function metaConquer(c){if(!P)return;flag("defeat:"+c.race);if(c.leg){flag("defeat:"+c.leg);flag("leg")}}
+function metaTick(){if(!P||!G)return;if(G.cols.length>=3)flag("col3");if(G.cols.length>=5)flag("col5");if(G.wonders.length>=6)flag("wond6");if(allies().length)flag("ally");const m=P.meta;if(G.lvl10>m.best){m.best=G.lvl10;checkMeta()}}
+function onWin(){if(!P)return;const m=P.meta;m.wins++;m.winRaces[G.race]=1;m.best=99;saveMeta();checkMeta()}
+const ago=t=>{const m=Math.round((Date.now()-t)/60000);return m<1?"just now":m<60?m+" min ago":m<1440?Math.round(m/60)+" h ago":Math.round(m/1440)+" days ago"};
+function exportCode(){const o={v:1,name:P.name,pin:P.pin,meta:P.meta,slots:[0,1,2].map(readSlot)};return btoa(unescape(encodeURIComponent(JSON.stringify(o))))}
+function importCode(code){
+  try{const o=JSON.parse(decodeURIComponent(escape(atob(String(code).replace(/\s/g,"")))));if(!o||!o.name||!o.meta)return"That code is not valid.";
+    P={name:String(o.name).slice(0,16),pin:o.pin||"",meta:fixMeta(o.meta)};saveMeta();
+    for(let i=0;i<3;i++){if(o.slots&&o.slots[i])LS.set(slotKey(i),JSON.stringify(o.slots[i]));else LS.del(slotKey(i))}
+    return""}catch(e){return"That code is not valid."}
+}
+function login(name,pin){
+  name=(name||"").trim().replace(/[^\w \-]/g,"").slice(0,16);if(!name)return"Type a commander name.";
+  const p=loadProfile(name);
+  if(p){if(p.pin&&p.pin!==hpin(pin||""))return"Wrong PIN.";P=p}
+  else P={name,pin:hpin(pin||""),meta:newMeta()};
+  saveMeta();return"";
+}
+function showLogin(msg){
+  const names=profileNames();
+  openOv('<div class="box"><h1>DARK FOREST<br>ASCENT</h1><p>Log in to keep your progress: unlocked races, achievements and three save slots. Profiles are stored on this device. Use Backup to move one to another device.</p>'+
+   (names.length?'<div class="sec">Profiles on this device</div><div class="races">'+names.map(n=>'<button class="rc" data-pf="'+esc(n)+'"><b>'+esc(n)+'</b></button>').join("")+'</div>':"")+
+   '<div class="sec">'+(names.length?"Log in or create a new profile":"Create your profile")+'</div>'+
+   '<input id="pn" maxlength="16" placeholder="Commander name"><input id="lpin" maxlength="8" placeholder="PIN (optional)" style="margin-top:6px">'+
+   '<button class="big" id="pgo">Enter</button><button id="prs">Restore from backup code</button><p id="pm">'+(msg||"")+'</p></div>');
+  const go=()=>{const e=login($("pn").value,$("lpin").value);if(e)$("pm").textContent=e;else showMenu()};
+  $("pgo").onclick=go;$("prs").onclick=()=>showBackup();
+  ov.querySelectorAll("[data-pf]").forEach(b=>b.onclick=()=>{const n=b.dataset.pf,p=loadProfile(n);$("pn").value=n;if(p&&!p.pin){P=p;saveMeta();showMenu()}else{$("lpin").focus();$("pm").textContent="Enter the PIN for "+n+"."}});
+}
+function showMenu(note){
+  if(!P)return showLogin();
+  const m=P.meta,total=Object.keys(RACES).length,open=Object.keys(RACES).filter(raceOpen).length;
+  const armed={};
+  const slots=[0,1,2].map(i=>{const d=readSlot(i);
+    if(!d)return'<div class="ci"><b>Slot '+(i+1)+' · empty</b><div class="row"><button data-sn="'+i+'">New game</button></div></div>';
+    const q=d.sum||{};
+    return'<div class="ci"><b>Slot '+(i+1)+' · '+esc(q.name||"?")+'</b><span class="tag">'+rname(q.race)+'</span><span class="tag">'+(q.state==="won"?"COMPLETED":"Lv "+fmtL(q.lvl10))+'</span><div>Cycle '+q.cycle+' · saved '+ago(q.t)+'</div><div class="row">'+(q.state==="won"||!d.g?"":'<button data-sc="'+i+'">Continue</button>')+'<button data-sn="'+i+'" data-warn="1">'+(q.state==="won"?"New game":"Overwrite")+'</button><button data-sd="'+i+'" style="border-color:var(--red)">Delete</button></div></div>'}).join("");
+  openOv('<div class="box"><h1>DARK FOREST<br>ASCENT</h1><div class="ci"><b>Commander '+esc(P.name)+'</b><span class="tag">games '+m.games+'</span><span class="tag">wins '+m.wins+'</span><span class="tag">best Lv '+fmtL(m.best||1)+'</span><div>Races unlocked: '+open+' of '+total+' · achievements: '+Object.keys(m.ach).length+' of '+ACH.length+'</div></div>'+
+   (note?'<p>'+note+'</p>':'')+'<div class="sec">Save slots</div><div class="cx">'+slots+'</div>'+
+   '<button class="big" id="mpr">Races and achievements</button><button id="mhl">How to play (guide)</button>'+
+   (unlocked()?'':'<div class="sec">Secret code</div><input id="code" maxlength="24" placeholder="Enter a secret code"><button id="uc">Unlock</button>')+
+   '<p id="cm"></p><div class="row"><button id="mbk">Backup / restore</button><button id="mlo">Log out</button></div></div>');
+  ov.querySelectorAll("[data-sc]").forEach(b=>b.onclick=()=>{if(!loadSlot(+b.dataset.sc)){showMenu("That save is from an older version and cannot be loaded.")}});
+  ov.querySelectorAll("[data-sn]").forEach(b=>b.onclick=()=>{if(b.dataset.warn&&!armed[b.dataset.sn]){armed[b.dataset.sn]=1;b.textContent="Tap again to confirm";return}showRaces(+b.dataset.sn)});
+  ov.querySelectorAll("[data-sd]").forEach(b=>b.onclick=()=>{if(!armed["d"+b.dataset.sd]){armed["d"+b.dataset.sd]=1;b.textContent="Tap again to delete";return}LS.del(slotKey(+b.dataset.sd));showMenu("Slot "+(+b.dataset.sd+1)+" deleted.")});
+  $("mpr").onclick=showProgress;$("mhl").onclick=()=>showHelp(0,()=>showMenu());$("mbk").onclick=()=>showBackup();$("mlo").onclick=()=>{LS.del("dfa_cur");P=null;showLogin()};
+  if($("uc"))$("uc").onclick=()=>{if($("code").value.replace(/\s/g,"").toUpperCase()===CODE){P.meta.secret=1;saveMeta();showMenu("A secret civilization has answered your call. It waits in the new-game list.")}else $("cm").textContent="Nothing answers. The code is wrong."};
+}
+function showRaces(slot){
+  let sel="Human";const grades=["Standard","Specialist","Apex"].concat(unlocked()?["Secret"]:[]),gd={Standard:"Balanced",Specialist:"Specialists",Apex:"Apex powers (overpowered)",Secret:"Secret civilization"};
+  openOv('<div class="box"><h2>New game · Slot '+(slot+1)+'</h2><p>Every civilization in the dark is a hunter, and any signal can bring a strike. Grow from level 0.1 to 9.9. Locked races unlock by meeting their requirement in any game.</p>'+
+   '<input id="nm" maxlength="16" placeholder="Name your civilization" value="Terra">'+
+   grades.map(gr=>'<div class="sec">'+gd[gr]+'</div><div class="races">'+Object.keys(RACES).filter(r=>RACES[r].g===gr).map(r=>{const op=raceOpen(r);
+     return'<button class="rc'+(gr==="Apex"?" apex":"")+(op?"":" lock")+(r===sel?" sel":"")+'" data-rr="'+r+'"><b style="color:'+RACES[r].c+'">'+rname(r)+'</b>'+
+      (op?'<span>'+RACES[r].d+'</span><em>'+RACES[r].p+'</em><span>'+(r==="Immortal"?"No technology: 10 Immortal Arrays and 10 cultivation realms. ":"3 unique wonders and 3 unique technologies. ")+'Signature ship: '+SHIPN[r][7]+'.</span>':'<em>LOCKED: '+(REQ[r]?REQ[r][0]:"?")+'</em>')+'</button>'}).join("")+'</div>').join("")+
+   '<button class="big" id="go">Begin</button><button id="rb">Back</button><p>Move: drag on screen, or WASD / arrows. Fire: hold FIRE or Space (auto-aims). Keys 1 to 5 run the bottom actions. Your game saves automatically to this slot.</p></div>');
+  ov.querySelectorAll("[data-rr]").forEach(b=>b.onclick=()=>{if(!raceOpen(b.dataset.rr)){UI.shake=6;return}sel=b.dataset.rr;ov.querySelectorAll("[data-rr]").forEach(x=>x.classList.toggle("sel",x===b))});
+  $("go").onclick=()=>{startGame($("nm").value.trim(),sel,slot);closeOv()};$("rb").onclick=()=>showMenu();
+}
+function showProgress(){
+  const m=P.meta;
+  openOv('<div class="box"><h2>Races and achievements</h2><div class="sec">Races</div><div class="cx">'+
+   Object.keys(RACES).map(r=>{const op=raceOpen(r);return'<div class="ci'+(op?" done":"")+'"><b>'+rname(r)+'</b><span class="tag">'+RACES[r].g+'</span><div>'+(op?"Unlocked":r==="Immortal"?"Secret: needs a code.":"Locked: "+REQ[r][0])+'</div></div>'}).join("")+
+   '</div><div class="sec">Achievements ('+Object.keys(m.ach).length+'/'+ACH.length+')</div><div class="cx">'+
+   ACH.map(a=>'<div class="ci'+(m.ach[a[0]]?" done":"")+'"><b>'+a[1]+'</b><span class="tag">'+(m.ach[a[0]]?"done":"open")+'</span><div>'+a[2]+'</div></div>').join("")+
+   '</div><p>Each achievement gives +10 starting energy in every new game.</p><button class="big" id="cl2">Back</button></div>');
+  $("cl2").onclick=()=>showMenu();
+}
+function showBackup(){
+  const has=!!P;
+  openOv('<div class="box"><h2>Backup and restore</h2><p>Your profile lives in this browser. To keep it safe, or move it to another phone, copy the backup code below and paste it into Restore on the other device.</p>'+
+   (has?'<div class="sec">Your backup code</div><textarea id="bx" readonly rows="4" style="width:100%;box-sizing:border-box"></textarea><button id="bc">Select and copy</button>':'')+
+   '<div class="sec">Restore from a code</div><textarea id="bi" rows="4" placeholder="Paste a backup code here" style="width:100%;box-sizing:border-box"></textarea><button class="big" id="bgo">Restore</button><p id="bm"></p><button id="bb">Back</button></div>');
+  if(has){$("bx").value=exportCode();$("bc").onclick=()=>{const t=$("bx");t.focus();t.select();try{document.execCommand("copy");$("bm").textContent="Copied. If nothing happened, press and hold the text to copy it."}catch(e){$("bm").textContent="Press and hold the text to copy it."}}}
+  $("bgo").onclick=()=>{const e=importCode($("bi").value);if(e)$("bm").textContent=e;else showMenu("Profile restored.")};
+  $("bb").onclick=()=>has?showMenu():showLogin();
+}
+
+
+const GUIDE=[
+ ["The goal","<p>You lead a young civilization in the <b>Dark Forest</b>: the universe is full of hunters, and any civilization that shows itself can be destroyed.</p><p>Grow from <b>level 0.1</b> to <b>9.9</b> to win. Levels 7.0 and above are god-level: Heavenly, Divine and Origin.</p><p>Hide when you are weak, build strength, and strike first when you are ready.</p>"],
+ ["Controls","<p><b>Move:</b> drag on the screen like a joystick, or use WASD / arrow keys.</p><p><b>Fire:</b> hold the FIRE button (or Space). Your envoy aims by itself and shoots raiders, calamities and strike fleets. Shots cost a little energy.</p><p><b>Bottom buttons (keys 1 to 5):</b> Research, Defend, Cloak, Fleet and Empire.</p><p><b>Top:</b> Pause, game speed, Codex (civilizations met and a chronicle), and this guide (?). Tap the small map to open the galaxy map.</p>"],
+ ["Your resources","<p><b>Energy</b> pays for everything. Collect the gold orbs, and earn it from your world, colonies and gas skimmers.</p><p><b>Research</b> raises your level. Press Research, then watch the green bar fill.</p><p><b>Defense</b> protects you from strike fleets. Your fleet adds to it.</p><p><b>Population</b> limits how well you work. Plague and calamities hurt it.</p><p>Time moves in <b>cycles</b> of 4 seconds. Every cycle you earn energy and the world changes.</p>"],
+ ["Signal: the golden rule","<p>Everything loud raises your <b>Signal</b> (the red bar): research, defense, trade, raids, colonies, war. A high signal calls hunters to your home.</p><p>The dashed red ring around your world shows how far hunters can notice you. Bigger signal means a bigger ring.</p><p><b>Cloak</b> hides you for a while. Nebulae also make you quieter. Pulsars and warp storms make you louder.</p><p>Until level 2.0 you are protected. After that, stay quiet and keep your defense above the power of nearby civilizations.</p>"],
+ ["Other civilizations","<p>Fly near a planet with a name to open its contact panel:</p><p><b>Trade</b> gives energy and calms them. <b>Ally</b> (needs one trade first) gives research each cycle and halves hostility. <b>Appease</b> sends tribute and cancels a strike fleet. <b>Raid</b> is a quick, risky attack. <b>Send fleet</b> launches a real war.</p><p>Legendary civilizations have special rules. Read their description when you meet them.</p>"],
+ ["Fleet, shipyard and war","<p>At level 0.5 build a <b>Shipyard</b> (Empire menu). Queue ships. New classes unlock as you level. <b>Supply</b> limits fleet size and grows with level and colonies.</p><p>The home fleet protects your world and shoots enemies nearby. In Fleet you can send <b>task forces</b> (all or half) against a known civilization. Watch the live battle on the map and tap <b>Recall</b> if it goes badly.</p><p>If you win, choose: <b>Colonize</b> (steady energy, bigger territory, but louder) or <b>Destroy</b> (big loot, no noise).</p>"],
+ ["Territory and rival wars","<p>Every civilization has <b>territory</b> (the dotted circle). Higher-level civilizations have stronger fleets and a larger zone.</p><p>If your task force crosses a hostile zone, <b>interceptors</b> attack it. If you attack a civilization, its <b>pact partners</b> send reinforcements.</p><p>Rivals also form <b>pacts</b> (gold lines) and fight <b>wars</b> (red lines) with each other. A civilization at war is distracted, which is your chance to strike. Check the Codex for current wars and pacts.</p>"],
+ ["Wonders and technology","<p><b>Wonders</b> are huge buildings that give permanent bonuses. Unlock them as you level, and pay energy to build them. Each race also has its own special wonders.</p><p><b>Technology</b> gives bonuses too. Every race has its own unique techs, plus a few shared ones. Open both from the Empire menu.</p><p><b>Colonies</b>: fly to an empty planet and found an outpost. Gas giants can have a skimmer for steady energy.</p>"],
+ ["Dangers","<p><b>Strike fleets:</b> launched by hunters who notice you. Raise defense, cloak, appease, or shoot them down before they arrive.</p><p><b>Calamities:</b> four great threats (swarm, machines, demons, anomaly). Destroy them or wait; they leave after 8 cycles.</p><p><b>Bandits:</b> raiders from bandit havens steal energy and pillage colonies. Shoot them for loot.</p><p><b>Warp storms and black holes:</b> risky but rewarding. Black holes give research near the edge and drag you in if you get too close.</p>"],
+ ["Races, unlocks and saves","<p>You begin with Human. Other races <b>unlock</b> by meeting a goal in any game (for example defeating a Dragon civilization, or reaching level 3.0). The new-game screen shows each requirement.</p><p>Your profile has <b>three save slots</b>. The game saves automatically. Use Empire, then Save and main menu to switch slots. Use Backup to copy your profile to another device.</p><p><b>Achievements</b> give +10 starting energy each. A secret code unlocks one hidden race.</p>"],
+ ["Quick start","<p>1. Collect nearby orbs. 2. Research until level 0.5 and build a Shipyard. 3. Keep defense above nearby civilizations. 4. Trade with friendly planets and ally with calm ones. 5. Build a fleet and claim worlds. 6. Stay quiet. Good luck, Commander.</p>"]
+];
+function showHelp(n,back){
+  n=n||0;const g=GUIDE[n];
+  openOv('<div class="box gd"><h2>Guide · '+g[0]+'</h2><div class="hp">'+GUIDE.map((x,i)=>'<i class="'+(i<=n?"on":"")+'"></i>').join("")+'</div>'+g[1]+
+   '<div class="row">'+(n>0?'<button id="hpv">Back</button>':'')+(n<GUIDE.length-1?'<button class="big" id="hnx">Next</button>':'<button class="big" id="hcl">Done</button>')+'</div>'+
+   '<div class="row"><button id="hix">Close guide</button></div></div>');
+  const close=()=>{if(P){P.meta.tut=1;saveMeta()}back?back():closeOv()};
+  if($("hpv"))$("hpv").onclick=()=>showHelp(n-1,back);if($("hnx"))$("hnx").onclick=()=>showHelp(n+1,back);
+  if($("hcl"))$("hcl").onclick=close;$("hix").onclick=close;
+}
+
 /* ---------- save ---------- */
-function save(clear){try{if(clear||!G||G.dead||G.won){localStorage.removeItem(SAVE);return}localStorage.setItem(SAVE,JSON.stringify(G))}catch(e){}}
 function loadSave(){try{const s=localStorage.getItem(SAVE);if(!s)return null;const g=JSON.parse(s);return g&&g.race&&RACES[g.race]&&g.bodies&&g.tf&&g.techs&&g.wars&&g.bandits?g:null}catch(e){return null}}
 
 /* ---------- rendering ---------- */
@@ -1241,25 +1420,15 @@ const ov=$("ov");
 function openOv(html){if(G&&G.race==="Immortal"&&!ov.hidden!==undefined)html=html.replace(/>([^<]+)</g,(m,t)=>">"+IW(t)+"<");UI.paused=true;ov.hidden=false;ov.innerHTML=html;ov.scrollTop=0}
 function closeOv(){ov.hidden=true;ov.innerHTML="";UI.paused=false;$("bPause").textContent="Pause";lastContact=""}
 function showIntro(){
-  const sv=loadSave();let sel="Human";
-  const un=unlocked(),grades=["Standard","Specialist","Apex"].concat(un?["Secret"]:[]),gd={Standard:"Balanced",Specialist:"Specialists",Apex:"Apex powers (overpowered)",Secret:"Secret civilization"};
-  openOv('<div class="box"><h1>DARK FOREST<br>ASCENT</h1>'+
-   '<p>Every civilization in the dark is a hunter, and any signal can bring a strike. Grow from level 0.1 to 9.9. Fly your envoy through a universe of black holes, wormholes and countless worlds. Build fleets, ally or conquer, and stay quiet.</p>'+
-   '<input id="nm" maxlength="16" placeholder="Name your civilization" value="'+(UI.nm||"Terra")+'">'+
-   grades.map(gr=>'<div class="sec">'+gd[gr]+'</div><div class="races">'+Object.keys(RACES).filter(r=>RACES[r].g===gr).map(r=>'<button class="rc'+(gr==="Apex"?" apex":"")+(r===sel?" sel":"")+'" data-r="'+r+'"><b style="color:'+RACES[r].c+'">'+rname(r)+'</b><span>'+RACES[r].d+'</span><em>'+RACES[r].p+'</em><span>'+(r==="Immortal"?"No technology: 10 Immortal Arrays and 10 cultivation realms. ":"3 unique wonders and 3 unique technologies. ")+'Signature ship: '+SHIPN[r][7]+'.</span></button>').join("")+'</div>').join("")+
-   '<button class="big" id="go">Begin</button>'+(un?'':'<div class="sec">Secret code</div><input id="code" maxlength="24" placeholder="Enter a secret code"><button id="uc">Unlock</button><p id="cm"></p>')+(sv?'<button id="cont">Continue saved game (Lv '+fmtL(sv.lvl10)+', cycle '+sv.cycle+')</button>':"")+
-   '<p>Move: drag on screen, or WASD / arrows. Fire: hold FIRE or Space (auto-aims). Keys 1 to 5 run the bottom actions. Fly next to a planet to trade, ally, appease or raid it, or send your fleet to wage war. Each race has its own technologies, wonders and warships. Tap the minimap for the galaxy map.</p></div>');
-  ov.querySelectorAll(".rc").forEach(b=>b.onclick=()=>{sel=b.dataset.r;ov.querySelectorAll(".rc").forEach(x=>x.classList.toggle("sel",x===b))});
-  if($("uc"))$("uc").onclick=()=>{UI.nm=$("nm").value;if($("code").value.replace(/\s/g,"").toUpperCase()===CODE){try{localStorage.setItem("dfa_unlock","1")}catch(e){}UI.secret=1;showIntro()}else $("cm").textContent="Nothing answers. The code is wrong."};
-  $("go").onclick=()=>{newGame($("nm").value.trim(),sel);closeOv()};
-  if(sv)$("cont").onclick=()=>{G=sv;setRace();closeOv();say("Welcome back.")};
+  if(!P){const cur=LS.get("dfa_cur");if(cur){const p=loadProfile(cur);if(p&&!p.pin)P=p}}
+  P?showMenu():showLogin();
 }
 function showEnd(){
   const s=G.stats;
   openOv('<div class="box"><h1>'+(G.won?"LEVEL 9.9 REACHED":"CIVILIZATION LOST")+'</h1><p>'+(G.won?G.name+" stands at the Origin, beyond every hunter in the dark forest. The ten thousand races bow.":G.deadWhy)+'</p>'+
    '<div class="cx"><div class="ci"><b>Final level '+fmtL(G.lvl10)+' · '+rname(G.race)+'</b><div>'+G.cycle+' cycles · '+G.wonders.length+' wonders · '+G.cols.length+' colonies · '+s.colonized+' worlds claimed · '+s.destroyed+' destroyed · '+s.won+' of '+s.battles+' fleet battles won · '+s.cals+' calamities destroyed · '+s.repelled+' of '+s.strikes+' strikes repelled</div></div></div>'+
-   '<button class="big" id="again">Play again</button></div>');
-  $("again").onclick=showIntro;
+   '<button class="big" id="again">Main menu</button>'+(!G.won&&P&&G.slot!==undefined&&readSlot(G.slot)&&readSlot(G.slot).g?'<button id="rl">Load last save</button>':'')+'</div>');
+  $("again").onclick=()=>{G=null;showIntro()};if($("rl"))$("rl").onclick=()=>{const sl=G.slot;if(!loadSlot(sl)){G=null;showMenu("That save could not be loaded.")}};
 }
 function showChoice(c){
   const e=Math.round((25+4*c.lvl10)*(c.leg==="greenhide"?2:1));
@@ -1313,7 +1482,7 @@ function showFleet(){
 }
 function showEmpire(){
   openOv('<div class="box"><h2>Empire</h2><div class="ci"><b>'+G.name+' · '+rname(G.race)+'</b><div>Level '+fmtL(G.lvl10)+' · '+(1+G.cols.length)+' worlds · fleet power '+Math.round(fleetPower())+' · '+G.techs.length+' technologies · '+G.wonders.length+' wonders</div></div>'+
-   '<button class="big" data-e="t">'+(isIm()?"Immortal Arrays":"Technology")+'</button><button class="big" data-e="y">Shipyard</button><button class="big" data-e="w">Wonders</button><button id="cl">Back to game</button></div>');
+   '<button class="big" data-e="t">'+(isIm()?"Immortal Arrays":"Technology")+'</button><button class="big" data-e="y">Shipyard</button><button class="big" data-e="w">Wonders</button><button class="big" data-e="m">Save and main menu</button><button id="cl">Back to game</button></div>');
   $("cl").onclick=closeOv;
 }
 function showTech(){
@@ -1333,7 +1502,7 @@ ov.addEventListener("click",e=>{
   else if(b.dataset.s){if(buildShip(b.dataset.s))showYard()}
   else if(b.dataset.y){if(buildYard())showYard()}
   else if(b.dataset.t){if(buyTech(b.dataset.t))showTech()}
-  else if(b.dataset.e){const k=b.dataset.e;k==="t"?showTech():k==="y"?showYard():showWonders()}
+  else if(b.dataset.e){const k=b.dataset.e;k==="m"?(save(),G=null,showIntro()):k==="t"?showTech():k==="y"?showYard():showWonders()}
   else if(b.dataset.f){const p=b.dataset.f.split("|"),c=G.civs.find(x=>String(x.id)===p[0]);if(c&&dispatch(c,parseFloat(p[1])))closeOv();else if(c)showFleet()}
   else if(b.dataset.r){const t=G.tf.find(x=>String(x.id)===b.dataset.r);if(t){recallTF(t);showFleet()}}
 });
@@ -1355,7 +1524,7 @@ $("aW").onclick=()=>{if(G&&ov.hidden)showFleet()};$("aY").onclick=()=>{if(G&&ov.
 mm.onclick=()=>{if(G&&ov.hidden)showMap()};
 $("bPause").onclick=()=>{if(!G||!ov.hidden)return;UI.paused=!UI.paused;$("bPause").textContent=UI.paused?"Resume":"Pause"};
 $("bSpd").onclick=()=>{UI.speed=UI.speed%3+1;$("bSpd").textContent=UI.speed+"x"};
-$("bCodex").onclick=()=>{if(G&&ov.hidden)showCodex()};
+$("bCodex").onclick=()=>{if(G&&ov.hidden)showCodex()};$("bHelp").onclick=()=>{if(G&&ov.hidden)showHelp(0)};
 addEventListener("resize",resize);addEventListener("blur",()=>{UI.fire=false;UI.keys={}});
 document.addEventListener("visibilitychange",()=>{if(document.hidden)save()});
 
@@ -1368,7 +1537,7 @@ function frame(now){
   draw();requestAnimationFrame(frame);
 }
 resize();
-window.__DF={get G(){return G},step,endCycle,newGame,actResearch,actDefense,actCloak,actWonder,availWonder,buildYard,buildShip,cTrade,cAlly,cAppease,cAttack,cColonize,cSkim,conquer,costs,effDef,civPower,shotDmg,nextWonder,popf,UI,spawnCal,CALS,floorSig,need,fleetPower,supplyCap,supplyUsed,SHIPS,RACES,YARD,showYard,showWonders,showMap,showCodex,showChoice,lootRuin,updateShip,dispatch,recallTF,buyTech,techList,techCost,tfPower,oddsOf,showFleet,showEmpire,showTech,aiDiplomacy,tribulation,ensureBandits,spawnBandit,launchWar,cfStep,banditStep,warpEvent,terr,blocMates,civ,CODE,unlocked,tierName,killBandit};
+window.__DF={get G(){return G},step,endCycle,newGame,actResearch,actDefense,actCloak,actWonder,availWonder,buildYard,buildShip,cTrade,cAlly,cAppease,cAttack,cColonize,cSkim,conquer,costs,effDef,civPower,shotDmg,nextWonder,popf,UI,spawnCal,CALS,floorSig,need,fleetPower,supplyCap,supplyUsed,SHIPS,RACES,YARD,showYard,showWonders,showMap,showCodex,showChoice,lootRuin,updateShip,dispatch,recallTF,buyTech,techList,techCost,tfPower,oddsOf,showFleet,showEmpire,showTech,aiDiplomacy,tribulation,ensureBandits,spawnBandit,launchWar,cfStep,banditStep,warpEvent,terr,blocMates,civ,CODE,unlocked,tierName,killBandit,get P(){return P},startGame,loadSlot,readSlot,flag,cntUp,REQ,ACH,raceOpen,checkMeta,login,showMenu,showLogin,showRaces,showProgress,showHelp,GUIDE,showBackup,exportCode,importCode,metaTick,save};
 showIntro();
 requestAnimationFrame(frame);
 </script>
