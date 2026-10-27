@@ -2,6 +2,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dark Forest Ascent</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#04060c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
 /* Layout: full-screen canvas universe, HUD pinned top, action bar pinned bottom, overlays for yard / wonders / codex / map. Single dark look on purpose. */
@@ -1540,4 +1546,5 @@ resize();
 window.__DF={get G(){return G},step,endCycle,newGame,actResearch,actDefense,actCloak,actWonder,availWonder,buildYard,buildShip,cTrade,cAlly,cAppease,cAttack,cColonize,cSkim,conquer,costs,effDef,civPower,shotDmg,nextWonder,popf,UI,spawnCal,CALS,floorSig,need,fleetPower,supplyCap,supplyUsed,SHIPS,RACES,YARD,showYard,showWonders,showMap,showCodex,showChoice,lootRuin,updateShip,dispatch,recallTF,buyTech,techList,techCost,tfPower,oddsOf,showFleet,showEmpire,showTech,aiDiplomacy,tribulation,ensureBandits,spawnBandit,launchWar,cfStep,banditStep,warpEvent,terr,blocMates,civ,CODE,unlocked,tierName,killBandit,get P(){return P},startGame,loadSlot,readSlot,flag,cntUp,REQ,ACH,raceOpen,checkMeta,login,showMenu,showLogin,showRaces,showProgress,showHelp,GUIDE,showBackup,exportCode,importCode,metaTick,save};
 showIntro();
 requestAnimationFrame(frame);
+try{if("serviceWorker" in navigator&&/^https?:/.test(location.protocol))navigator.serviceWorker.register("sw.js").catch(function(){})}catch(e){}
 </script>
